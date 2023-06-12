@@ -410,6 +410,7 @@ func (p Proxy) pushOCIArtifact(ctx context.Context, subject *ociimagespec.Descri
 		configDescriptor.MediaType = imagegenConfigMediaType
 		configDescriptor.Digest = digest.FromBytes(configBytes)
 		configDescriptor.Size = int64(len(configBytes))
+		configDescriptor.Data = nil
 	}
 
 	ref := fmt.Sprintf("%s/%s:%s", p.Options.LoginServer, repo, tag)

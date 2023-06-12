@@ -309,11 +309,13 @@ func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
 		if err != nil {
 			if opt.errorExpected {
 				p.Logger.Info().Msgf("Received Expected Error: %v", err)
+				p.Logger.Info().Msgf("Success")
 			} else {
 				p.Logger.Error().Msgf("Received Unexpected Error: %v", err)
 			}
+		} else {
+			p.Logger.Info().Msgf("Success")
 		}
-		p.Logger.Info().Msgf("Success")
 	}
 	return nil
 }

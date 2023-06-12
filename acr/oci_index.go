@@ -11,10 +11,10 @@ var createOCIIndex = &cli.Command{
 	Usage:     "create-oci-index",
 	ArgsUsage: "<login-server>",
 	Flags:     commonFlags,
-	Action:    runCheckHealth,
+	Action:    runGenerateOCIIndex,
 }
 
-func runCheckHealth(ctx *cli.Context) (err error) {
+func runGenerateOCIIndex(ctx *cli.Context) (err error) {
 	proxy, err := proxy(ctx)
 	if err != nil {
 		return err

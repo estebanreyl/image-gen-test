@@ -12,6 +12,7 @@ import (
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
+	"github.com/google/uuid"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ociimagespec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -22,41 +23,23 @@ import (
 
 // Registry REST routes
 const (
-	// Ping routes
-	routeFrontendPing     = "/v2/"
-	routeDataEndpointPing = "/"
-
-	// Blob routes
-	routeInitiateBlobUpload = "/v2/%s/blobs/uploads/" // add repo name
-	routeBlobPull           = "/v2/%s/blobs/%s"       // add repo name and digest
-
-	// Manifest routes
-	routeManifest = "/v2/%s/manifests/%s" // add repo name and digest/tag
-
 	// Referrer routes
-	// ocirouteReferrers = "/oras/artifacts/v1/%s/manifests/%s/referrers" // add repo name and digest
-	ocirouteReferrers  = "/v2/%s/referrers/%s"                          // add repo name and digest
-	orasrouteReferrers = "/oras/artifacts/v1/%s/manifests/%s/referrers" // add repo name and digest
-
-	// API Versions
-	OciReferrers         = "Referrers_OCI_V1"
-	OciManifestReferrers = "Referrers_OCI_Manifest"
-	OrasReferrers        = "Referrers_ORAS_V1"
+	ocirouteReferrers = "/v2/%s/referrers/%s" // add repo name and digest
 )
 
 // Constants for generated data.
 const (
-	checkHealthAuthor       = "ACR Check Health"
-	checkHealthMediaType    = "application/acr.checkhealth.test"
-	checkHealthArtifactType = "application/acr.checkhealth.artifact.test"
-	checkHealthLayerFmt     = "Test layer authored by " + checkHealthAuthor + " at %s" // add time
-	checkHealthRepoPrefix   = "acrcheckhealth"
+	author                  = "esrey"
+	imagegenConfigMediaType = "application/acr.imagegent.test"
+	imagegenArtifactType    = "application/acr.imagegent.artifact.test"
+	repoprefix              = "imagegentest"
+	tagPrefix               = "genimage"
 )
 
 // Other data.
 var (
 	ociConfig = ociimagespec.Image{
-		Author: checkHealthAuthor,
+		Author: author,
 	}
 )
 
@@ -124,7 +107,7 @@ func NewProxy(opts *Options, logger zerolog.Logger) (*Proxy, error) {
 // PushOCIIndex pushes an OCI Index to the registry
 func (p Proxy) GenerateOCIIndex(ctx context.Context, hasMediaType bool) error {
 	var (
-		repo = fmt.Sprintf("%v%v", checkHealthRepoPrefix, time.Now().Unix())
+		repo = fmt.Sprintf("%v%v", repoprefix, time.Now().Unix())
 		tag  = fmt.Sprintf("%v", time.Now().Unix())
 	)
 	if p.Repository != "" {
@@ -132,7 +115,7 @@ func (p Proxy) GenerateOCIIndex(ctx context.Context, hasMediaType bool) error {
 	}
 
 	var Manifests []ociimagespec.Descriptor
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 11; i++ {
 		// Push simple image
 		desc, err := p.pushOCIImage(ctx, repo, fmt.Sprintf("%s-oci-%d", tag, i), ociConfig, 2)
 		if err != nil {
@@ -173,14 +156,169 @@ func (p Proxy) GenerateOCIIndex(ctx context.Context, hasMediaType bool) error {
 	return nil
 }
 
-func (p Proxy) url(hostname, route string) string {
-	scheme := "https"
-	if p.Insecure {
-		scheme = "http"
-	}
-	return fmt.Sprintf("%s://%s%s", scheme, hostname, route)
+type artifactConstructOptions struct {
+	includesArtifactType bool
+	configIsScratch      bool
+	layersAreScratch     bool
+	layercount           int
+	hasSubject           bool
+	subjectInRegistry    bool
+	errorExpected        bool
 }
 
+func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
+	var (
+		repo = fmt.Sprintf("%v%v", repoprefix, time.Now().Unix())
+	)
+	if p.Repository != "" {
+		repo = p.Repository
+	}
+	// Subject Exists
+	opts := []artifactConstructOptions{
+		{
+			// Basic Referrer Artifact type (Success)
+			includesArtifactType: true,
+			configIsScratch:      true,
+			layersAreScratch:     true,
+			layercount:           1,
+			hasSubject:           true,
+			subjectInRegistry:    true,
+			errorExpected:        false,
+		},
+		{
+			// Basic Refferer Artifact type (Success - teleportLike)
+			includesArtifactType: true,
+			configIsScratch:      false,
+			layersAreScratch:     false,
+			layercount:           3,
+			hasSubject:           true,
+			subjectInRegistry:    true,
+			errorExpected:        false,
+		},
+		{
+			// Artifact Type no artifact type but using scratch (Error)
+			includesArtifactType: false,
+			configIsScratch:      true,
+			layersAreScratch:     true,
+			layercount:           1,
+			hasSubject:           true,
+			subjectInRegistry:    true,
+			errorExpected:        true,
+		},
+		{
+			// Basic Artifact type with Layers and scratch config (Expected)
+			includesArtifactType: true,
+			configIsScratch:      true,
+			layersAreScratch:     false,
+			layercount:           1,
+			hasSubject:           true,
+			subjectInRegistry:    true,
+			errorExpected:        false,
+		},
+		{
+			// Basic Artifact type with config, scratch layers and no artifact type (Expected)
+			includesArtifactType: false,
+			configIsScratch:      false,
+			layersAreScratch:     true,
+			layercount:           1,
+			hasSubject:           true,
+			subjectInRegistry:    true,
+			errorExpected:        false,
+		},
+		{
+			// Basic Artifact type Scratch everything, no subject (Expected)
+			includesArtifactType: true,
+			configIsScratch:      true,
+			layersAreScratch:     true,
+			layercount:           1,
+			hasSubject:           false,
+			subjectInRegistry:    false,
+			errorExpected:        false,
+		},
+		{
+			// Basic Artifact type Scratch everything, no artifact type (Expected)
+			includesArtifactType: false,
+			configIsScratch:      true,
+			layersAreScratch:     true,
+			layercount:           1,
+			hasSubject:           false,
+			subjectInRegistry:    false,
+			errorExpected:        false,
+		},
+		{
+			// Basic Artifact type No layers (Error)
+			includesArtifactType: true,
+			configIsScratch:      true,
+			layersAreScratch:     false,
+			layercount:           0,
+			hasSubject:           false,
+			subjectInRegistry:    false,
+			errorExpected:        true,
+		},
+	}
+	// Push a Subject
+	subjectDesc, err := p.pushOCIImage(ctx, repo, "oci-subject", ociConfig, 2)
+	if err != nil {
+		return err
+	}
+
+	for i, opt := range opts {
+		subject := ociimagespec.Descriptor{}
+		if opt.hasSubject {
+			if opt.subjectInRegistry {
+				subject = subjectDesc
+			} else {
+				uuidStr := uuid.New().String() // Generate a random UUID to make sure subject doesn't exist
+				subject = ociimagespec.Descriptor{
+					MediaType: ociimagespec.MediaTypeImageIndex,
+					Digest:    digest.FromBytes([]byte(uuidStr)),
+					Size:      int64(len([]byte(uuidStr))),
+				}
+			}
+		}
+
+		_, err := p.pushOCIArtifact(ctx, &subject, repo, fmt.Sprintf("%s-oci-%d", tagPrefix, i), opt)
+
+		subjectAdded := "Subject Added"
+		if !opt.hasSubject {
+			subjectAdded = "Subject Missing"
+		}
+
+		subjectExists := "Subject Exists"
+		if !opt.subjectInRegistry {
+			subjectExists = "Subject Missing"
+		}
+
+		artifactTypeAdded := "Artifact Type Added"
+		if !opt.includesArtifactType {
+			artifactTypeAdded = "Artifact Type Missing"
+		}
+
+		configType := "Scratch Config"
+		if !opt.configIsScratch {
+			configType = "Regular Config"
+		}
+
+		layerType := "Scratch Layers"
+		if !opt.layersAreScratch {
+			layerType = "Regular Layers"
+		}
+		layerType = fmt.Sprintf("%d - %s", opt.layercount, layerType)
+		testTitle := fmt.Sprintf("OCI Artifact %d: %s - %s - %s - %s - %s", i, subjectAdded, subjectExists, artifactTypeAdded, configType, layerType)
+		p.Logger.Info().Msgf(testTitle)
+		if err != nil {
+			if opt.errorExpected {
+				p.Logger.Info().Msgf("Received Expected Error: %v", err)
+			} else {
+				p.Logger.Error().Msgf("Received Unexpected Error: %v", err)
+			}
+		}
+		p.Logger.Info().Msgf("Success")
+	}
+	return nil
+}
+
+// Pushes a simple OCI image with @param layercount layers to the registry
 func (p Proxy) pushOCIImage(ctx context.Context, repo, tag string, config any, layercount int) (ociimagespec.Descriptor, error) {
 	configBytes, err := json.Marshal(config)
 	if err != nil {
@@ -194,7 +332,7 @@ func (p Proxy) pushOCIImage(ctx context.Context, repo, tag string, config any, l
 		return ociimagespec.Descriptor{}, err
 	}
 	configDesc := ociimagespec.Descriptor{
-		MediaType: checkHealthMediaType,
+		MediaType: imagegenConfigMediaType,
 		Digest:    digest.FromBytes(configBytes),
 		Size:      int64(len(configBytes)),
 	}
@@ -204,26 +342,105 @@ func (p Proxy) pushOCIImage(ctx context.Context, repo, tag string, config any, l
 	}
 
 	// upload layers
-	var layerDigests []ociimagespec.Descriptor
+	var layerDescs []ociimagespec.Descriptor
 	for i := 0; i < layercount; i++ {
-		layerBytes := []byte(fmt.Sprintf(checkHealthLayerFmt, time.Now(), i))
+		layerBytes := []byte(fmt.Sprintf("TestLayer %s %d-at-time %s", tag, i, time.Now()))
 		layerDesc := ociimagespec.Descriptor{
 			MediaType: ociimagespec.MediaTypeImageLayer,
-			Digest:    digest.FromBytes(configBytes),
-			Size:      int64(len(configBytes)),
+			Digest:    digest.FromBytes(layerBytes),
+			Size:      int64(len(layerBytes)),
 		}
 		err := uploadBytes(ctx, pusher, layerDesc, layerBytes)
 		if err != nil {
 			return ociimagespec.Descriptor{}, err
 		}
-		layerDigests = append(layerDigests, layerDesc)
+		layerDescs = append(layerDescs, layerDesc)
 	}
 
 	ociManifest := ociimagespec.Manifest{
 		Versioned: specs.Versioned{SchemaVersion: 2},
 		MediaType: ociimagespec.MediaTypeImageManifest,
 		Config:    configDesc,
-		Layers:    layerDigests,
+		Layers:    layerDescs,
+	}
+
+	manifestBytes, err := json.Marshal(ociManifest)
+	if err != nil {
+		return ociimagespec.Descriptor{}, err
+	}
+
+	// Upload manifest
+	manifestDesc := ociimagespec.Descriptor{
+		MediaType: ociimagespec.MediaTypeImageManifest,
+		Digest:    digest.FromBytes(manifestBytes),
+		Size:      int64(len(manifestBytes)),
+	}
+	err = uploadBytes(ctx, pusher, manifestDesc, manifestBytes)
+	if err != nil {
+		return ociimagespec.Descriptor{}, err
+	}
+	return manifestDesc, nil
+}
+
+// Pushes a simple OCI Image Artifact
+func (p Proxy) pushOCIArtifact(ctx context.Context, subject *ociimagespec.Descriptor, repo, tag string, opts artifactConstructOptions) (ociimagespec.Descriptor, error) {
+	configDescriptor := ociimagespec.ScratchDescriptor
+	configBytes := ociimagespec.ScratchDescriptor.Data
+	var err error
+
+	if !opts.configIsScratch {
+		configBytes, err = json.Marshal(ociConfig)
+		if err != nil {
+			return ociimagespec.Descriptor{}, err
+		}
+		configDescriptor.MediaType = imagegenConfigMediaType
+		configDescriptor.Digest = digest.FromBytes(configBytes)
+		configDescriptor.Size = int64(len(configBytes))
+	}
+
+	ref := fmt.Sprintf("%s/%s:%s", p.Options.LoginServer, repo, tag)
+	pusher, err := p.resolver.Pusher(ctx, ref)
+	// Upload config blob
+	if err != nil {
+		return ociimagespec.Descriptor{}, err
+	}
+	err = uploadBytes(ctx, pusher, configDescriptor, configBytes)
+	if err != nil {
+		return ociimagespec.Descriptor{}, err
+	}
+
+	var layerDescs []ociimagespec.Descriptor
+	for i := 0; i < opts.layercount; i++ {
+		if opts.layersAreScratch {
+			// Avoid reuploading the scratch layer if its already been pushed
+			if !opts.configIsScratch && i == 0 {
+				err = uploadBytes(ctx, pusher, ociimagespec.ScratchDescriptor, ociimagespec.ScratchDescriptor.Data)
+				if err != nil {
+					return ociimagespec.Descriptor{}, err
+				}
+			}
+			layerDescs = append(layerDescs, ociimagespec.ScratchDescriptor)
+		} else {
+			layerBytes := []byte(fmt.Sprintf("TestLayer %s %d-at-time %s", tag, i, time.Now()))
+			layerDesc := ociimagespec.Descriptor{
+				MediaType: ociimagespec.MediaTypeImageLayer,
+				Digest:    digest.FromBytes(layerBytes),
+				Size:      int64(len(layerBytes)),
+			}
+			layerDescs = append(layerDescs, layerDesc)
+		}
+	}
+
+	ociManifest := ociimagespec.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ociimagespec.MediaTypeImageManifest,
+		Config:    ociimagespec.ScratchDescriptor,
+		Layers:    layerDescs,
+		Subject:   subject,
+	}
+
+	if opts.includesArtifactType {
+		ociManifest.ArtifactType = imagegenArtifactType
 	}
 
 	manifestBytes, err := json.Marshal(ociManifest)

@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
+	"io"
+	"io/ioutil"
 	"os"
 
+	"github.com/sirupsen/logrus"
+
+	containerdLog "github.com/containerd/containerd/log"
 	"github.com/urfave/cli/v2"
 )
 
@@ -29,10 +35,22 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			createOCIIndex,
+			createOCIArtifactsTest,
 		},
 	}
+	disableLibraryLogrusLogging()
 
 	if err := app.Run(os.Args); err != nil {
 		logger.Fatal().Msg(err.Error())
 	}
+}
+
+func disableLibraryLogrusLogging() {
+	containerdLog.G = func(ctx context.Context) *logrus.Entry {
+		logger := logrus.New()
+		logger.SetOutput(io.Discard)
+		return logrus.NewEntry(logger)
+	}
+	// disable all logrus logging from standard logrus logger
+	logrus.SetOutput(ioutil.Discard)
 }

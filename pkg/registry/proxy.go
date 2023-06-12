@@ -275,13 +275,13 @@ func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
 	}
 
 	for i, opt := range opts {
-		subject := ociimagespec.Descriptor{}
+		var subject *ociimagespec.Descriptor
 		if opt.hasSubject {
 			if opt.subjectInRegistry {
-				subject = subjectDesc
+				subject = &subjectDesc
 			} else {
 				uuidStr := uuid.New().String() // Generate a random UUID to make sure subject doesn't exist
-				subject = ociimagespec.Descriptor{
+				subject = &ociimagespec.Descriptor{
 					MediaType: ociimagespec.MediaTypeImageIndex,
 					Digest:    digest.FromBytes([]byte(uuidStr)),
 					Size:      int64(len([]byte(uuidStr))),
@@ -289,7 +289,7 @@ func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
 			}
 		}
 
-		_, err := p.pushOCIArtifact(ctx, &subject, repo, fmt.Sprintf("%s-oci-%d", tagPrefix, i), opt)
+		_, err := p.pushOCIArtifact(ctx, subject, repo, fmt.Sprintf("%s-oci-%d", tagPrefix, i), opt)
 
 		subjectAdded := "Subject Added"
 		if !opt.hasSubject {
@@ -315,7 +315,7 @@ func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
 		if !opt.layersAreScratch {
 			layerType = "Regular Layers"
 		}
-		layerType = fmt.Sprintf("%d - %s", opt.layercount, layerType)
+		layerType = fmt.Sprintf("%s (%d)", layerType, opt.layercount)
 		testTitle := fmt.Sprintf("OCI Artifact %d: %s - %s - %s - %s - %s", i, subjectAdded, subjectExists, artifactTypeAdded, configType, layerType)
 		p.Logger.Info().Msgf(testTitle)
 		if err != nil {
@@ -454,7 +454,7 @@ func (p Proxy) pushOCIArtifact(ctx context.Context, subject *ociimagespec.Descri
 	ociManifest := ociimagespec.Manifest{
 		Versioned: specs.Versioned{SchemaVersion: 2},
 		MediaType: ociimagespec.MediaTypeImageManifest,
-		Config:    ociimagespec.ScratchDescriptor,
+		Config:    configDescriptor,
 		Layers:    layerDescs,
 		Subject:   subject,
 	}

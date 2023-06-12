@@ -217,19 +217,30 @@ func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
 		},
 		{
 			// Basic Artifact type with config, scratch layers and no artifact type (Error)
+			// This should fallback to use the mediatype as artifact type I think
 			includesArtifactType: false,
 			configIsScratch:      false,
 			layersAreScratch:     true,
 			layercount:           1,
 			hasSubject:           true,
 			subjectInRegistry:    true,
-			errorExpected:        true,
+			errorExpected:        false,
 		},
 		{
 			// Basic Artifact type Scratch everything, no subject (Expected)
 			includesArtifactType: true,
 			configIsScratch:      true,
 			layersAreScratch:     true,
+			layercount:           1,
+			hasSubject:           false,
+			subjectInRegistry:    false,
+			errorExpected:        false,
+		},
+		{
+			// Regular OCI (Expected)
+			includesArtifactType: false,
+			configIsScratch:      false,
+			layersAreScratch:     false,
 			layercount:           1,
 			hasSubject:           false,
 			subjectInRegistry:    false,

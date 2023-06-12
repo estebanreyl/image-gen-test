@@ -216,14 +216,14 @@ func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
 			errorExpected:        false,
 		},
 		{
-			// Basic Artifact type with config, scratch layers and no artifact type (Expected)
+			// Basic Artifact type with config, scratch layers and no artifact type (Error)
 			includesArtifactType: false,
 			configIsScratch:      false,
 			layersAreScratch:     true,
 			layercount:           1,
 			hasSubject:           true,
 			subjectInRegistry:    true,
-			errorExpected:        false,
+			errorExpected:        true,
 		},
 		{
 			// Basic Artifact type Scratch everything, no subject (Expected)
@@ -236,14 +236,15 @@ func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
 			errorExpected:        false,
 		},
 		{
-			// Basic Artifact type Scratch everything, no artifact type (Expected)
+			// Basic Artifact type Scratch everything, no artifact type (Error)
+			// If the scratch config is true, then the artifact type must be set
 			includesArtifactType: false,
 			configIsScratch:      true,
 			layersAreScratch:     true,
 			layercount:           1,
 			hasSubject:           false,
 			subjectInRegistry:    false,
-			errorExpected:        false,
+			errorExpected:        true,
 		},
 		{
 			// Basic Artifact type No layers (Error)
@@ -284,9 +285,9 @@ func (p Proxy) GenerateOCIArtifacts(ctx context.Context) error {
 			subjectAdded = "Subject Missing"
 		}
 
-		subjectExists := "Subject Exists"
+		subjectExists := "Subject in Registry"
 		if !opt.subjectInRegistry {
-			subjectExists = "Subject Missing"
+			subjectExists = "Subject Not in Registry"
 		}
 
 		artifactTypeAdded := "Artifact Type Added"

@@ -429,6 +429,10 @@ func (p Proxy) pushOCIArtifact(ctx context.Context, subject *ociimagespec.Descri
 				Digest:    digest.FromBytes(layerBytes),
 				Size:      int64(len(layerBytes)),
 			}
+			err := uploadBytes(ctx, pusher, layerDesc, layerBytes)
+			if err != nil {
+				return ociimagespec.Descriptor{}, err
+			}
 			layerDescs = append(layerDescs, layerDesc)
 		}
 	}
